@@ -16,3 +16,7 @@ To build:
 ```
 make
 ```
+
+## Notes
+
+The critial headers `hpack_encode_table.h` and `hpack_decode_table.h` are generated automatically.

@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 
 #include <iostream>
+#include <math.h>
 
 inline uint64_t htonll(uint64_t x)
 {
@@ -91,10 +92,11 @@ bool decode(const uint8_t* input, size_t input_bits, std::string& output) {
         size_t byte_pos = read_pos_bits / 8;
         size_t bit_pos = read_pos_bits % 8;
         // attempt to load as much data as possible, if we are at the beginning of a new byte of code
-        if(decode_bits == 0) {
-            size_t to_read = std::min((size_t)table->min_bits, 8 - bit_pos);
+        if(decode_bits < table->min_bits - 1 && bit_pos != 7) {
+            size_t to_read = std::min((size_t)table->min_bits - decode_bits, 8 - bit_pos);
             auto rbyte = input[byte_pos];
-            current_byte = rbyte >> (8 - to_read - bit_pos) & ((1 << to_read) - 1);
+            auto mask = rbyte >> (8 - to_read - bit_pos) & ((1 << to_read) - 1);
+            current_byte = current_byte << to_read | mask;
             read_pos_bits += to_read;
             decode_bits += to_read;
         }
