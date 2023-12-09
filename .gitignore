@@ -1,0 +1,9 @@
+test
+benchmark
+old/
+make_decoding_table
+*.o
+*.so
+
+hpack_decode_table.h
+hpack_encode_table.h
