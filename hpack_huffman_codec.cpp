@@ -17,6 +17,19 @@ inline uint64_t htonll(uint64_t x)
     return ((uint64_t)htonl(x & 0xffffffff) << 32) | htonl(x >> 32);
 }
 
+inline size_t htonz(size_t x)
+{
+    if constexpr (sizeof(size_t) == 4) {
+        return htonl(x);
+    }
+    else if constexpr (sizeof(size_t) == 8) {
+        return htonll(x);
+    }
+    else {
+        static_assert(sizeof(size_t) == 4 || sizeof(size_t) == 8);
+    }
+}
+
 size_t hpack_huffman_encode(const char* src, size_t src_len, std::vector<uint8_t>& dst)
 {
     const size_t initial_size = dst.size();
@@ -31,7 +44,7 @@ size_t hpack_huffman_encode(const char* src, size_t src_len, std::vector<uint8_t
 
         size_t remaining_bits = nbits;
         auto c = code;
-        // This needs some explanation. The huffman code in HPACK at most 30 bits long. Able to be stored in 4 bytes.
+        // This needs explanation. The huffman code in HPACK is at most 30 bits long. Able to be stored in 4 bytes.
         // Which happens to be the size of the accumulator on 32-bit systems. So the worst case scenario is that we
         // push 1 bit into the accumulator. Write it out. Then pus the remaining 29 bits into the accumulator. Under 
         // no circumstances can we need a loop to write out the accumulator. So we can just use a simple if statement
@@ -47,11 +60,12 @@ size_t hpack_huffman_encode(const char* src, size_t src_len, std::vector<uint8_t
             accumulator = (accumulator << bits_to_copy) | (c >> (remaining_bits - bits_to_copy));
             c = c & ((1 << (remaining_bits - bits_to_copy)) - 1);
             accumulator_bits += bits_to_copy;
+            assert(accumulator_bits == accumulator_max_bits);
             remaining_bits -= bits_to_copy;
 
             size_t old_size = dst.size();
             dst.resize(dst.size() + sizeof(accumulator));
-            accumulator = htonll(accumulator);
+            accumulator = htonz(accumulator);
             memcpy(dst.data() + old_size, &accumulator, sizeof(accumulator));
             // accumulator = 0; // will be written to later
             // accumulator_bits = 0;
@@ -59,8 +73,6 @@ size_t hpack_huffman_encode(const char* src, size_t src_len, std::vector<uint8_t
             bits_to_copy = remaining_bits;
             accumulator = c;
             accumulator_bits = bits_to_copy;
-            assert(remaining_bits == bits_to_copy);
-            // remaining_bits -= bits_to_copy;
             remaining_bits = 0; // Must be 0
         }
     }
@@ -70,7 +82,7 @@ size_t hpack_huffman_encode(const char* src, size_t src_len, std::vector<uint8_t
     if (accumulator_bits > 0) {
         const auto bytes = (accumulator_bits + 7) / 8;
         dst.resize(dst.size() + bytes);
-        accumulator = htonll(accumulator << (accumulator_max_bits - accumulator_bits));
+        accumulator = htonz(accumulator << (accumulator_max_bits - accumulator_bits));
         memcpy(&dst[dst.size() - bytes], &accumulator, bytes);
     }
 
@@ -101,6 +113,9 @@ bool decode(const uint8_t* input, size_t input_bits, std::string& output) {
             current_byte = rbyte >> (8 - to_read - bit_pos) & ((1 << to_read) - 1);
             read_pos_bits += to_read; 
             decode_bits += to_read;
+
+            if(decode_bits != table->min_bits)
+                continue;
         }
         // OK, if we are at byte boundary, we load partial data
         else if(decode_bits < table->min_bits - 1 && bit_pos != 7) {
